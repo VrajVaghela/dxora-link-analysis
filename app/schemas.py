@@ -1,7 +1,7 @@
 """Pydantic response schemas for the /link-analysis endpoint."""
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------- Brand ----
@@ -27,12 +27,17 @@ class CompetitorAnalysis(BaseModel):
     main_category: str
     main_products_services: list[str]
     competitors: list[CompetitorDetail] = Field(
-        description="Minimum 3 competitors where reliable information is available"
+        min_length=3,
+        description="Minimum 3 competitors where reliable information is available",
     )
     competitor_strengths: list[str]
     competitor_weaknesses: list[str]
     your_competitive_advantages: list[str]
     opportunities: list[str]
+    strengths: list[str] = Field(
+        default_factory=list,
+        description="Competitor strengths (PRD Section 4 example response compatibility)",
+    )
     competitor_data_source: Literal["ai_generated_suggestion"] = (
         "ai_generated_suggestion"
     )  # competitor intel is LLM-generated; never presented as verified fact
@@ -47,8 +52,36 @@ class SearchQuery(BaseModel):
     business_relevance: str
     target_audience: str
 
+    @field_validator("platforms", mode="before")
+    @classmethod
+    def normalize_platforms(cls, values: Any) -> list[str]:
+        if isinstance(values, str):
+            values = [values]
+        mapping = {
+            "twitter": "X",
+            "x (twitter)": "X",
+            "x": "X",
+            "google search": "Google",
+            "google": "Google",
+            "facebook": "Facebook",
+            "instagram": "Instagram",
+            "linkedin": "LinkedIn",
+        }
+        normalized = []
+        for v in values:
+            val_str = str(v).strip()
+            val_lower = val_str.lower()
+            normalized.append(mapping.get(val_lower, val_str))
+        return normalized
+
 
 # --------------------------------------- Section 3: SEO --------------------
+
+class SupportingContentItem(BaseModel):
+    type: str = Field(description="e.g. Service landing page, FAQ, Blog topic, Location page")
+    topic: str
+    why: str
+
 
 class SeoImprovements(BaseModel):
     primary_keyword: str
@@ -61,8 +94,16 @@ class SeoImprovements(BaseModel):
     title_structure_notes: str
     current_meta_description: str
     recommended_meta_description: str
+    meta_description: str = Field(
+        "",
+        description="Recommended meta description (PRD Section 4 example response compatibility)",
+    )
+    meta_description_keywords: list[str] = Field(
+        default_factory=list,
+        description="Relevant keywords for meta description",
+    )
     meta_business_summary: str
-    supporting_content: list[dict[str, str]] = Field(
+    supporting_content: list[SupportingContentItem] = Field(
         description='List of {"type": ..., "topic": ..., "why": ...} suggestions'
     )
 

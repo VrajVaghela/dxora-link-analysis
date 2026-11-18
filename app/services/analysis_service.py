@@ -16,19 +16,32 @@ from app.schemas import Analysis, BrandInfo, LinkAnalysisResponse
 from app.services import llm_service
 from app.services.competitor_service import COMPETITOR_INSTRUCTIONS
 from app.services.website_extractor import WebsiteFetchError, fetch_website
+from app.utils.validators import normalize_url
 
 # ------------------------------------------------------------------ cache --
 
+MAX_CACHE_SIZE = 500
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def _cache_get(url: str) -> dict[str, Any] | None:
-    entry = _cache.get(url)
+    norm_url = normalize_url(url)
+    entry = _cache.get(norm_url)
     if entry and time.time() - entry[0] < settings.cache_ttl_seconds:
         return entry[1]
     if entry:
-        _cache.pop(url, None)
+        _cache.pop(norm_url, None)
     return None
+
+
+def _cache_set(url: str, payload: dict[str, Any]) -> None:
+    norm_url = normalize_url(url)
+    # Evict oldest entry if cache capacity reached
+    if len(_cache) >= MAX_CACHE_SIZE:
+        oldest_key = min(_cache.keys(), key=lambda k: _cache[k][0], default=None)
+        if oldest_key:
+            _cache.pop(oldest_key, None)
+    _cache[norm_url] = (time.time(), payload)
 
 
 # ------------------------------------------------------------------ prompt --
@@ -66,7 +79,8 @@ names; no extra top-level keys, no comments):
       "competitor_strengths": ["..."],
       "competitor_weaknesses": ["..."],
       "your_competitive_advantages": ["..."],
-      "opportunities": ["..."]
+      "opportunities": ["..."],
+      "strengths": ["..."]
     }},
     "target_search_queries": [
       {{"query": "...",
@@ -86,6 +100,8 @@ names; no extra top-level keys, no comments):
       "title_structure_notes": "...",
       "current_meta_description": "...",
       "recommended_meta_description": "...",
+      "meta_description": "...",
+      "meta_description_keywords": ["..."],
       "meta_business_summary": "...",
       "supporting_content": [{{"type": "e.g. Service landing page | FAQ | Blog topic | Location page", "topic": "...", "why": "..."}}]
     }},
@@ -110,16 +126,17 @@ names; no extra top-level keys, no comments):
 }}
 
 STRICT RULES:
-1. target_search_queries: EXACTLY 5 items. Base them on the site's services,
+1. competitor_analysis.competitors: MINIMUM 3 items (provide 3 to 5 realistic competitors).
+2. target_search_queries: EXACTLY 5 items. Base them on the site's services,
    category and audience. Never state or imply numeric search volumes or
    rankings — you have no such data.
-2. top_services: EXACTLY 5 items, taken from actual website content where
+3. top_services: EXACTLY 5 items, taken from actual website content where
    possible; use "source": "inferred" for anything not directly on the page.
-3. seo_improvements: derive keywords from the actual page content. The
+4. seo_improvements: derive keywords from the actual page content. The
    recommended title should be <= 60 characters and the recommended meta
-   description <= 160 characters.
-4. Platforms array may contain only: Google, Facebook, Instagram, LinkedIn, X.
-5. JSON only. No markdown, no commentary."""
+   description <= 160 characters. Populate meta_description with the recommended meta description.
+5. Platforms array may contain only: Google, Facebook, Instagram, LinkedIn, X.
+6. JSON only. No markdown, no commentary."""
 
 
 # --------------------------------------------------------------- pipeline --
@@ -137,7 +154,23 @@ def analyze_link(url: str) -> dict[str, Any]:
     llm = llm_service.generate_json(SYSTEM_PROMPT, _build_user_prompt(url, llm_context))
 
     try:
-        analysis = Analysis.model_validate(llm.data.get("analysis", {}))
+        raw_analysis = llm.data.get("analysis", {})
+        # Ensure DOM-grounded metadata is preserved
+        if "seo_improvements" in raw_analysis and isinstance(raw_analysis["seo_improvements"], dict):
+            seo = raw_analysis["seo_improvements"]
+            seo["current_title"] = content.title or seo.get("current_title", "")
+            seo["current_meta_description"] = content.meta_description or seo.get("current_meta_description", "")
+            if not seo.get("meta_description"):
+                seo["meta_description"] = seo.get("recommended_meta_description", "")
+            if not seo.get("recommended_meta_description"):
+                seo["recommended_meta_description"] = seo.get("meta_description", "")
+
+        if "competitor_analysis" in raw_analysis and isinstance(raw_analysis["competitor_analysis"], dict):
+            comp = raw_analysis["competitor_analysis"]
+            if not comp.get("strengths"):
+                comp["strengths"] = comp.get("competitor_strengths", [])
+
+        analysis = Analysis.model_validate(raw_analysis)
         brand = BrandInfo.model_validate(llm.data.get("brand", {}))
     except Exception as exc:
         raise llm_service.LLMError(f"LLM output failed schema validation: {exc}")
@@ -161,5 +194,5 @@ def analyze_link(url: str) -> dict[str, Any]:
         },
     ).model_dump()
 
-    _cache[url] = (time.time(), payload)
+    _cache_set(url, payload)
     return payload

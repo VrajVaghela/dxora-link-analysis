@@ -1,9 +1,9 @@
 """LLM integration layer.
 
 Supports three providers behind one interface (chosen via LLM_PROVIDER env var):
-  - Google Gemini   (recommended: gemini-2.0-flash — cheapest/fastest with native JSON mode)
+  - Google Gemini   (recommended: gemini-2.5-flash — fast, reliable native JSON mode)
   - OpenAI          (gpt-4o-mini fallback)
-  - Anthropic       (claude-3-5-haiku fallback)
+  - Anthropic       (claude-3-5-haiku-20241022 fallback)
 
 All providers are called through their REST APIs with httpx (no vendor SDK
 required) and are asked for STRICT JSON output, which is parsed and validated.
@@ -52,7 +52,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def _retry(fn, attempts: int = 2, backoff: float = 1.5):
-    """Retry transient LLM failures (rate limits / 5xx / timeouts)."""
+    """Retry transient LLM failures (rate limits / 5xx / timeouts / transient JSON glitches)."""
     last_exc: Exception | None = None
     for attempt in range(attempts):
         try:
@@ -60,8 +60,8 @@ def _retry(fn, attempts: int = 2, backoff: float = 1.5):
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_exc = exc
         except LLMError as exc:
-            # Only retry server-side style failures, not schema errors.
-            if "JSON" in str(exc) or "schema" in str(exc):
+            # Do not retry client configuration errors (e.g. missing API key)
+            if "not configured" in str(exc):
                 raise
             last_exc = exc
         if attempt < attempts - 1:
@@ -104,11 +104,16 @@ def _call_gemini(system_prompt: str, user_prompt: str) -> LLMResponse:
         "prompt_tokens": body.get("usageMetadata", {}).get("promptTokenCount", 0),
         "completion_tokens": body.get("usageMetadata", {}).get("candidatesTokenCount", 0),
     }
-    try:
-        text = body["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError, TypeError):
+    candidates = body.get("candidates", [])
+    if not candidates:
         block = body.get("promptFeedback", {}).get("blockReason")
-        raise LLMError(f"Gemini returned no content (blockReason={block}).")
+        raise LLMError(f"Gemini returned no candidates (blockReason={block}).")
+
+    parts = candidates[0].get("content", {}).get("parts", [])
+    # Filter out reasoning/thought blocks so only text content is parsed
+    text = "".join(p.get("text", "") for p in parts if "text" in p and not p.get("thought"))
+    if not text.strip():
+        raise LLMError("Gemini returned empty text content.")
     return LLMResponse(_extract_json(text), latency, usage)
 
 

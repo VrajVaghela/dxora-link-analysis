@@ -14,13 +14,13 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     # Recommended model per provider (overridable via env).
-    # Defaults verified against provider pricing pages, Nov 2026:
-    #   gemini-3.5-flash-lite  $0.30 / $2.50 per 1M tokens (input/output)
-    #   gpt-6.1-terra          $1.00 / $5.00 per 1M tokens
-    #   claude-haiku-4-5       $1.00 / $5.00 per 1M tokens
-    gemini_model: str = "gemini-3.5-flash-lite"
-    openai_model: str = "gpt-6.1-terra"
-    anthropic_model: str = "claude-haiku-4-5"
+    # Published pricing per 1M tokens (input / output):
+    #   gemini-2.5-flash           $0.30 / $2.50
+    #   gpt-4o-mini                $0.15 / $0.60
+    #   claude-3-5-haiku-20241022  $1.00 / $5.00
+    gemini_model: str = "gemini-2.5-flash"
+    openai_model: str = "gpt-4o-mini"
+    anthropic_model: str = "claude-3-5-haiku-20241022"
 
     # ---- Website fetching ----
     request_timeout_seconds: float = 20.0

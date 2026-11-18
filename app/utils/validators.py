@@ -6,7 +6,7 @@ network ranges, cloud metadata endpoints, and non-HTTP schemes are rejected.
 """
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 
 class InvalidURLError(ValueError):
@@ -30,8 +30,29 @@ def _is_public_ip(ip: str) -> bool:
     return addr.is_global and not addr.is_multicast
 
 
+def normalize_url(url: str) -> str:
+    """Normalize URL for consistent caching and deduplication."""
+    parsed = urlparse(url.strip())
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+
+    # Strip default ports
+    if scheme == "http" and netloc.endswith(":80"):
+        netloc = netloc[:-3]
+    elif scheme == "https" and netloc.endswith(":443"):
+        netloc = netloc[:-4]
+
+    path = parsed.path
+    if path == "/":
+        path = ""
+    elif path.endswith("/") and len(path) > 1:
+        path = path.rstrip("/")
+
+    return urlunparse((scheme, netloc, path, parsed.params, parsed.query, parsed.fragment))
+
+
 def validate_url(url: str) -> str:
-    """Validate a user-supplied website URL. Returns the cleaned URL.
+    """Validate a user-supplied website URL. Returns the normalized, cleaned URL.
 
     Raises InvalidURLError / PrivateAddressError on bad or unsafe input.
     """
@@ -64,7 +85,7 @@ def validate_url(url: str) -> str:
         ipaddress.ip_address(hostname)
         if not _is_public_ip(hostname):
             raise PrivateAddressError(f"Access to IP address '{hostname}' is not allowed.")
-        return url
+        return normalize_url(url)
     except ValueError:
         pass  # hostname is a DNS name, resolve it below
 
@@ -80,4 +101,4 @@ def validate_url(url: str) -> str:
             raise PrivateAddressError(
                 f"'{hostname}' resolves to a private/internal address ({addr})."
             )
-    return url
+    return normalize_url(url)

@@ -23,16 +23,18 @@ VALID_LLM_JSON = {
             "main_category": "Technology Services",
             "main_products_services": ["Web development"],
             "competitors": [
-                {"name": "Rival A", "main_service": "Web development", "target_market": "SMB",
+                {"name": f"Rival {c}", "main_service": "Web development", "target_market": "SMB",
                  "key_strength": "Brand", "weakness": "Slow support"}
+                for c in ("A", "B", "C")
             ],
             "competitor_strengths": ["Strong brand"],
             "competitor_weaknesses": ["Slow support"],
             "your_competitive_advantages": ["Pricing"],
             "opportunities": ["SEO"],
+            "strengths": ["Strong brand"],
         },
         "target_search_queries": [
-            {"query": f"technology services {i}", "platforms": ["Google"],
+            {"query": f"technology services {i}", "platforms": ["Google", "Twitter"],
              "intent": "Service Discovery", "business_relevance": "High",
              "target_audience": "SMBs"}
             for i in range(1, 6)
@@ -48,12 +50,14 @@ VALID_LLM_JSON = {
             "title_structure_notes": "Keyword first, brand last.",
             "current_meta_description": "",
             "recommended_meta_description": "Test Co provides technology services.",
+            "meta_description": "Test Co provides technology services.",
+            "meta_description_keywords": ["technology services"],
             "meta_business_summary": "Tech services provider.",
             "supporting_content": [{"type": "FAQ", "topic": "Pricing", "why": "Common question"}],
         },
         "top_services": [
             {"service_name": f"Service {i}", "description": "desc", "target_industry": "Tech",
-             "target_customer": "SMB", "main_benefit": "Value", "source": "website"}
+              "target_customer": "SMB", "main_benefit": "Value", "source": "website"}
             for i in range(1, 6)
         ],
         "target_audience": {
@@ -134,14 +138,35 @@ class TestEndpoint:
             assert section in analysis
         assert len(analysis["target_search_queries"]) == 5
         assert len(analysis["top_services"]) == 5
+        assert len(analysis["competitor_analysis"]["competitors"]) >= 3
+        # Verify platform normalization ('Twitter' -> 'X')
+        assert "X" in analysis["target_search_queries"][0]["platforms"]
+        # Verify PRD Section 4 compatibility keys
+        assert "strengths" in analysis["competitor_analysis"]
+        assert "meta_description" in analysis["seo_improvements"]
         assert body["analysis"]["competitor_analysis"]["competitor_data_source"] == "ai_generated_suggestion"
         assert body["meta"]["prompt_tokens"] > 0
+
+    def test_rejects_fewer_than_three_competitors(self):
+        bad_llm_json = dict(VALID_LLM_JSON)
+        bad_analysis = dict(VALID_LLM_JSON["analysis"])
+        bad_comp = dict(bad_analysis["competitor_analysis"])
+        bad_comp["competitors"] = [bad_comp["competitors"][0]]  # only 1 competitor
+        bad_analysis["competitor_analysis"] = bad_comp
+        bad_llm_json["analysis"] = bad_analysis
+
+        fetch_patch, llm_patch = _mock_pipeline(bad_llm_json)
+        with fetch_patch, llm_patch:
+            response = client.post("/link-analysis", json={"url": "https://example.com"})
+        assert response.status_code == 502
+        assert "validation" in response.json()["error"].lower()
 
     def test_second_call_is_cached(self):
         fetch_patch, llm_patch = _mock_pipeline()
         with fetch_patch, llm_patch:
             client.post("/link-analysis", json={"url": "https://example.com"})
-            response = client.post("/link-analysis", json={"url": "https://example.com"})
+            # Request with trailing slash should hit same normalized cache key
+            response = client.post("/link-analysis", json={"url": "https://example.com/"})
         assert response.json()["meta"]["cached"] is True
 
     def test_inaccessible_website_returns_422(self):
@@ -169,6 +194,57 @@ class TestEndpoint:
             mock_llm.return_value.usage = {}
             response = client.post("/link-analysis", json={"url": "https://example.com"})
         assert response.status_code == 502
+
+
+class TestExtractor:
+    def test_extract_content_preserves_hero_and_nav_links(self):
+        from app.services.website_extractor import extract_content
+        sample_html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Acme Inc | Cloud Solutions</title>
+            <meta name="description" content="Next generation cloud services.">
+        </head>
+        <body>
+            <header class="site-header">
+                <nav class="main-navigation">
+                    <a href="/services">Our Services</a>
+                    <a href="/pricing">Pricing Plans</a>
+                </nav>
+            </header>
+            <section class="hero-banner">
+                <h1>Scale Your Business In The Cloud</h1>
+                <p>We provide enterprise-grade web development and managed infrastructure.</p>
+            </section>
+            <div class="cookie-banner">
+                <p>Accept our cookies.</p>
+            </div>
+        </body>
+        </html>
+        """
+        content = extract_content(sample_html, "https://example.com", "https://example.com")
+        assert content.title == "Acme Inc | Cloud Solutions"
+        assert content.meta_description == "Next generation cloud services."
+        assert "Scale Your Business In The Cloud" in content.headings
+        assert any("services" in link.lower() for link in content.links)
+        assert "enterprise-grade web development" in content.text
+        # Cookie banner should have been stripped
+        assert "Accept our cookies" not in content.text
+
+    def test_ssrf_redirect_to_private_ip_is_blocked(self):
+        from unittest.mock import MagicMock
+        from app.services.website_extractor import fetch_website
+
+        # Mock redirect response pointing to AWS metadata IP
+        redirect_resp = MagicMock()
+        redirect_resp.status_code = 302
+        redirect_resp.headers = {"Location": "http://169.254.169.254/latest/meta-data"}
+
+        with patch("httpx.Client.stream") as mock_stream:
+            mock_stream.return_value.__enter__.return_value = redirect_resp
+            with pytest.raises(WebsiteFetchError, match="Redirect blocked by SSRF policy"):
+                fetch_website("https://example.com")
 
 
 class TestHealth:

@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.schemas import LinkAnalysisResponse
 from app.services.analysis_service import analyze_link
 from app.services.llm_service import LLMError
 from app.services.website_extractor import WebsiteFetchError
@@ -32,7 +33,16 @@ class LinkAnalysisRequest(BaseModel):
     url: str = Field(..., examples=["https://example.com"])
 
 
-@app.post("/link-analysis")
+@app.post(
+    "/link-analysis",
+    response_model=LinkAnalysisResponse,
+    responses={
+        200: {"description": "Structured five-section website analysis report"},
+        400: {"description": "Invalid URL or blocked private/internal address (SSRF protection)"},
+        422: {"description": "Inaccessible website or insufficient readable content"},
+        502: {"description": "LLM provider or parsing error"},
+    },
+)
 def link_analysis(request: LinkAnalysisRequest) -> JSONResponse:
     """Analyze a website and return the five-section structured report."""
     try:
