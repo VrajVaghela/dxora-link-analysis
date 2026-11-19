@@ -444,30 +444,32 @@ ai-link-analysis/
 
 ---
 
-## 6. Deployment
+## 6. Deployment & Live Demo
 
-Deploy to any container or Python cloud platform (Render, Railway, Fly.io, or VPS).
+The application is deployed live on Vercel:
 
-### Option A: Render (Recommended - Free & Instant)
+| Resource | URL |
+|---|---|
+| **Live Demo (Root Redirect)** | [https://dxora-kappa.vercel.app](https://dxora-kappa.vercel.app) |
+| **Interactive API Docs (Swagger UI)** | [https://dxora-kappa.vercel.app/docs](https://dxora-kappa.vercel.app/docs) |
+| **Health Check** | [https://dxora-kappa.vercel.app/health](https://dxora-kappa.vercel.app/health) |
+| **Analysis Endpoint** | `POST https://dxora-kappa.vercel.app/link-analysis` |
 
+### Deploy to Other Cloud Hosts (Render / Railway / Docker)
+
+#### Option A: Render
 1. Go to [Render Dashboard](https://dashboard.render.com/) and click **New + Web Service**.
 2. Connect your GitHub repository: `https://github.com/VrajVaghela/dxora-link-analysis`
 3. Configure settings:
    - **Runtime**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 4. In **Environment Variables**, add:
    - `LLM_PROVIDER`: `gemini` (or `openai`)
    - `GEMINI_API_KEY`: `your_gemini_api_key`
 5. Click **Deploy Web Service**.
 
-Once deployed:
-- Root redirect: `GET https://<your-render-subdomain>.onrender.com/` (redirects straight to Swagger docs)
-- Live API Documentation: `GET https://<your-render-subdomain>.onrender.com/docs`
-- Live Analysis Endpoint: `POST https://<your-render-subdomain>.onrender.com/link-analysis`
-- Health check: `GET https://<your-render-subdomain>.onrender.com/health`
-
-### Option B: Docker
+#### Option B: Docker
 
 ```bash
 docker build -t dxora-link-analysis .
@@ -488,7 +490,8 @@ Per Dxora Practical Test instructions:
 - [x] Comprehensive LLM comparison table and cost analysis
 - [x] SSRF protection blocking private IPs, loopbacks, and redirect hops
 - [x] Zero committed credentials (`.env` in `.gitignore`, `.env.example` provided)
-- [ ] Deploy API to a public host (e.g., Render / Railway) to obtain the **Live Demo URL**
+- [x] Deployed API to a public host: [https://dxora-kappa.vercel.app](https://dxora-kappa.vercel.app)
+- [ ] Set `GEMINI_API_KEY` (or `OPENAI_API_KEY`) in Vercel project environment variables
 - [ ] Follow Dxora Technologies on LinkedIn: [LinkedIn](https://www.linkedin.com/company/dxora-technologies)
 - [ ] Follow CREST on Instagram: [Instagram](https://www.instagram.com/crestspot/)
 - [ ] Submit final email to `hr@chivoxai.com` with Name, Live Demo URL, GitHub link, and contact details.
