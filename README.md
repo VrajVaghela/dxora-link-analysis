@@ -17,6 +17,8 @@ start of each step.
 
 ```bash
 # 1. Clone and install
+git clone https://github.com/VrajVaghela/dxora-link-analysis.git
+cd dxora-link-analysis
 python -m venv .venv
 .venv/Scripts/activate            # Windows  (Linux/macOS: source .venv/bin/activate)
 pip install -r requirements.txt
@@ -30,15 +32,16 @@ uvicorn app.main:app --host 0.0.0.0 --port 4000
 ```
 
 - API documentation (Swagger): **http://localhost:4000/docs**
+- Interactive root redirect: **http://localhost:4000/** (redirects to `/docs`)
 - Health check: `GET http://localhost:4000/health`
 
 ### Run tests
 
 ```bash
-pytest tests/ -q
+pytest
 ```
 
-All 22 unit and regression tests pass; external website fetching and LLM calls are mocked, so tests are free, reproducible, and fast.
+All 23 unit and regression tests pass; external website fetching and LLM calls are mocked, so tests are free, reproducible, and fast.
 
 ---
 
@@ -443,16 +446,33 @@ ai-link-analysis/
 
 ## 6. Deployment
 
-Deploy to any container or Python host (Render, Railway, Fly.io, AWS, or VPS):
+Deploy to any container or Python cloud platform (Render, Railway, Fly.io, or VPS).
+
+### Option A: Render (Recommended - Free & Instant)
+
+1. Go to [Render Dashboard](https://dashboard.render.com/) and click **New + Web Service**.
+2. Connect your GitHub repository: `https://github.com/VrajVaghela/dxora-link-analysis`
+3. Configure settings:
+   - **Runtime**: `Python 3`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+4. In **Environment Variables**, add:
+   - `LLM_PROVIDER`: `gemini` (or `openai`)
+   - `GEMINI_API_KEY`: `your_gemini_api_key`
+5. Click **Deploy Web Service**.
+
+Once deployed:
+- Root redirect: `GET https://<your-render-subdomain>.onrender.com/` (redirects straight to Swagger docs)
+- Live API Documentation: `GET https://<your-render-subdomain>.onrender.com/docs`
+- Live Analysis Endpoint: `POST https://<your-render-subdomain>.onrender.com/link-analysis`
+- Health check: `GET https://<your-render-subdomain>.onrender.com/health`
+
+### Option B: Docker
 
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 4000
+docker build -t dxora-link-analysis .
+docker run -p 4000:4000 --env-file .env dxora-link-analysis
 ```
-
-- Live API Endpoint: `POST https://<your-domain>/link-analysis`
-- Swagger UI / OpenAPI: `GET https://<your-domain>/docs`
-- Health check: `GET https://<your-domain>/health`
 
 ---
 
@@ -461,12 +481,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 4000
 Per Dxora Practical Test instructions:
 
 - [x] Complete Python 3.x FastAPI source code
-- [x] Public GitHub Repository
+- [x] Public GitHub Repository: [VrajVaghela/dxora-link-analysis](https://github.com/VrajVaghela/dxora-link-analysis)
 - [x] Full setup, test execution, and API documentation
 - [x] Working `/docs` Swagger schema with full request and response models
+- [x] Interactive root redirect to `/docs`
 - [x] Comprehensive LLM comparison table and cost analysis
 - [x] SSRF protection blocking private IPs, loopbacks, and redirect hops
 - [x] Zero committed credentials (`.env` in `.gitignore`, `.env.example` provided)
+- [ ] Deploy API to a public host (e.g., Render / Railway) to obtain the **Live Demo URL**
 - [ ] Follow Dxora Technologies on LinkedIn: [LinkedIn](https://www.linkedin.com/company/dxora-technologies)
 - [ ] Follow CREST on Instagram: [Instagram](https://www.instagram.com/crestspot/)
 - [ ] Submit final email to `hr@chivoxai.com` with Name, Live Demo URL, GitHub link, and contact details.

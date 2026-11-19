@@ -6,7 +6,7 @@ Docs at:   http://localhost:4000/docs
 import logging
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -60,6 +60,12 @@ def link_analysis(request: LinkAnalysisRequest) -> JSONResponse:
     except LLMError as exc:
         logger.error("LLM failure for %s: %s", url, exc)
         return JSONResponse(status_code=502, content={"success": False, "error": f"Analysis engine failure: {exc}"})
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """Redirect root to interactive Swagger UI documentation."""
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health")
