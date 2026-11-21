@@ -92,7 +92,7 @@ def validate_url(url: str) -> str:
     # Resolve DNS and verify every returned address is public (DNS-rebinding safe).
     try:
         infos = socket.getaddrinfo(hostname, None)
-    except socket.gaierror as exc:
+    except (socket.gaierror, OSError, UnicodeError) as exc:
         raise InvalidURLError(f"Could not resolve hostname '{hostname}'.") from exc
 
     addresses = {info[4][0] for info in infos}

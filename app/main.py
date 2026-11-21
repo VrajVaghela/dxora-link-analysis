@@ -5,7 +5,7 @@ Docs at:   http://localhost:4000/docs
 """
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,13 @@ app = FastAPI(
         "structured business, competitor, SEO, search-query and target-audience insights."
     ),
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return a JSON error instead of a plain-text 500 for anything unexpected."""
+    logger.exception("Unhandled error on %s: %s", request.url.path, exc)
+    return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error."})
 
 
 class LinkAnalysisRequest(BaseModel):
